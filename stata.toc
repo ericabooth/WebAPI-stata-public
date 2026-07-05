@@ -1,0 +1,3 @@
+v 3
+d webapi: fetch an authenticated JSON web API into Stata as a dataset
+p webapi
