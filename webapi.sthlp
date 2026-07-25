@@ -158,5 +158,5 @@ and never commit a token to a public repository.{p_end}
 {title:Author}
 
 {pstd}
-Eric A. Booth, Sr Researcher, Texas2036.org (eric.a.booth@gmail.com), 2026.
+Eric A. Booth, Sr Researcher, Texas 2036 (eric.a.booth@gmail.com), 2026.
 MIT-licensed.  A companion to {help googlesheets} and {help googlechart}.

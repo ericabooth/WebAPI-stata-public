@@ -78,4 +78,4 @@ webapi get using "https://api.example.org/v1/status", ///
 
 ## Author and license
 
-Eric A. Booth, Sr Researcher, Texas2036.org (eric.a.booth@gmail.com), 2026. MIT-licensed. A companion to `googlesheets` and `googlechart`.
+Eric A. Booth, Sr Researcher, Texas 2036 (eric.a.booth@gmail.com), 2026. MIT-licensed. A companion to `googlesheets` and `googlechart`.
