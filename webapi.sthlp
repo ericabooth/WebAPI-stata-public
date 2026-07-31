@@ -63,8 +63,7 @@ authentication step, and a JSON reply that must be parsed into memory.
 {pstd}
 The network and JSON work is done by a companion Python helper that uses only
 the Python {bf:standard library} (no pip packages, no virtualenv), so the only
-requirement is a working {cmd:python3} on the PATH, which Stata 16 and later
-ships.  The helper selects the array of records named by {cmd:records()},
+requirement is a working {cmd:python3} on the system PATH.  The helper selects the array of records named by {cmd:records()},
 flattens each record's nested scalar fields into dotted column names, and
 writes a tab-separated table that {cmd:webapi} imports with
 {help import delimited}.

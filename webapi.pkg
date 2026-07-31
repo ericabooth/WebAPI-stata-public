@@ -11,7 +11,7 @@ d
 d   webapi get  using "<URL>" , records("data") [options]
 d   webapi post using "<URL>" , body("<json>") [options]
 d
-d Requires: Stata 16+ (for the shipped python3) or any python3 on PATH.
+d Requires: Stata 16+ and a python3 on the system PATH.
 d
 d KW: web api
 d KW: json
