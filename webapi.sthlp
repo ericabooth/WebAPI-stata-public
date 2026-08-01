@@ -19,7 +19,7 @@
 {title:Syntax}
 
 {p 8 16 2}
-{cmd:webapi get}  {cmd:using} {it:"URL"} {cmd:,} [{it:options}]
+{cmd:webapi get} {cmd:using} {it:"URL"} [{cmd:,} {it:options}]
 
 {p 8 16 2}
 {cmd:webapi post} {cmd:using} {it:"URL"} [{cmd:,} {cmd:body(}{it:text}{cmd:)} {it:options}]
@@ -143,7 +143,7 @@ field filters and a header:{p_end}
 
 {pstd}Create a resource with {cmd:post}; the reply is the created object:{p_end}
 {phang2}{cmd:. webapi post using "https://api.example.org/v1/items", ///}{p_end}
-{phang2}{cmd:      body(`"{"name":"Texas","value":18.8}"') bearer("$API_TOKEN") records("") clear}{p_end}
+{phang2}{cmd:      body(`"{c -(}"name":"Texas","value":18.8{c )-}"') bearer("$API_TOKEN") records("") clear}{p_end}
 
 {pstd}Poll a live endpoint on an interval; each snapshot stacks into a panel
 keyed by {cmd:_poll} and {cmd:_polltime}:{p_end}
