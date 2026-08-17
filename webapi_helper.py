@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """webapi_helper.py -- the network + JSON-to-table worker behind `webapi'.
 
+Portability (2026-08-16): explicit encoding="utf-8" on the TSV and status
+files so non-ASCII values round-trip on Windows (cp1252 default) as on POSIX.
+
 Usage (called by webapi.ado, not by hand):
     python3 webapi_helper.py <args.json> <out.json>
 
@@ -136,7 +139,7 @@ def run(args):
             if k not in cols:
                 cols.append(k)
 
-    with open(args["out_tsv"], "w", newline="") as f:
+    with open(args["out_tsv"], "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, delimiter="\t", lineterminator="\n")
         w.writerow(cols)
         for r in rows:
@@ -167,7 +170,7 @@ def main():
     except Exception as e:
         result = {"status": "error", "error": type(e).__name__, "message": str(e)}
 
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         for k, v in result.items():
             f.write(f"{k}={str(v).replace(chr(10), ' ').replace(chr(13), ' ')}\n")
     sys.exit(0 if result.get("status") == "ok" else 1)

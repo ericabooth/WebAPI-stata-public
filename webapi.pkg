@@ -8,8 +8,8 @@ d and observations.  The HTTP + auth + JSON-to-table work is done by a
 d Python standard-library helper, so no pip packages or virtualenv are
 d required -- only a working python3 on the PATH.
 d
-d Syntax: webapi get using "URL", records("data") [options]; and
-d webapi post using "URL", body("json") [options].
+d   webapi get  using "<URL>" , records("data") [options]
+d   webapi post using "<URL>" , body("<json>") [options]
 d
 d Requires: Stata 16+ and a python3 on the system PATH.
 d
@@ -20,9 +20,9 @@ d KW: rest
 d KW: oauth
 d KW: import
 d
-d Author: Eric A. Booth, Sr Researcher, Texas 2036
+d Author: Eric A. Booth, Sr Researcher, Texas2036.org
 d Support: eric.a.booth@gmail.com
-d Distribution-Date: 20260802
+d Distribution-Date: 20260816
 d
 f webapi.ado
 f webapi.sthlp

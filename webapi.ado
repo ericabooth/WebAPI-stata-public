@@ -1,4 +1,6 @@
-*! webapi v0.1.0  2026-07-04
+*! webapi v0.1.1  2026-08-16
+*! v0.1.1 2026-08-16: no-output hint reports the actual interpreter (python
+*!   on Windows).  Helper already UTF-8-safe and dependency-free (stdlib urllib).
 *! Fetch an authenticated JSON web API into Stata as a dataset.
 *!
 *! A small, dependency-free generalisation of the pattern documented in
@@ -109,7 +111,7 @@ program define webapi, rclass
 
         capture confirm file `"`status'"'
         if _rc {
-            display as error "webapi: the helper produced no output. Is python3 on your PATH?"
+            display as error `"webapi: the helper produced no output.  Is `PY' on your PATH?"'
             exit 198
         }
 
