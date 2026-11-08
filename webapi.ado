@@ -1,4 +1,7 @@
-*! webapi v0.1.1  2026-08-16
+*! webapi v0.1.2  2026-11-08
+*! v0.1.2: bindquote(strict), so a value that contains line breaks stays one
+*!   row (it used to split into extra rows); a "~" in tsv() is expanded here,
+*!   because the Python helper does not expand it.
 *! v0.1.1 2026-08-16: no-output hint reports the actual interpreter (python
 *!   on Windows).  Helper already UTF-8-safe and dependency-free (stdlib urllib).
 *! Fetch an authenticated JSON web API into Stata as a dataset.
@@ -67,7 +70,9 @@ program define webapi, rclass
         local outdata `"`datatsv'"'
     }
     else {
-        local outdata `"`tsv'"'
+        * Expand a leading "~" here: Stata and the Python helper must use the
+        * same full path, and Python does not expand "~".
+        _wa_expandtilde, local(outdata) path(`"`tsv'"')
     }
     tempfile status argjson
 
@@ -149,7 +154,7 @@ program define webapi, rclass
         if `polling' {
             * accumulate one snapshot per poll, stamped with the poll index
             * and the wall-clock time, so a stream of pulls stacks into a panel.
-            import delimited using `"`outdata'"', delimiters(tab) varnames(1) clear `scols'
+            import delimited using `"`outdata'"', delimiters(tab) bindquote(strict) varnames(1) clear `scols'
             quietly gen long _poll = `_p'
             quietly gen str12 _polltime = "`c(current_time)'"
             if `_p' > 1 quietly append using `"`master'"'
@@ -158,7 +163,7 @@ program define webapi, rclass
             if `_p' < `times' & `every' > 0 sleep `=int(`every'*1000)'
         }
         else {
-            import delimited using `"`outdata'"', delimiters(tab) varnames(1) `clear' `scols'
+            import delimited using `"`outdata'"', delimiters(tab) bindquote(strict) varnames(1) `clear' `scols'
         }
     }
 
@@ -176,4 +181,40 @@ program define webapi, rclass
     }
     return local http `"`http'"'
     return local url  `"`url'"'
+end
+
+
+* Expand a leading "~" (bare "~", "~/" or "~\") to the home directory, without
+* relying on the operating system, Stata, or Python to do it.  Result goes to
+* the caller's local.
+program define _wa_expandtilde
+    version 16.0
+    syntax , LOCAL(name) [ PATH(string) ]
+    local p `"`path'"'
+    if `"`p'"' == "~" | strpos(`"`p'"', "~/") == 1 | strpos(`"`p'"', "~\") == 1 {
+        if lower("`c(os)'") == "windows" local order "USERPROFILE HOMEDRIVEPATH HOME"
+        else                              local order "HOME USERPROFILE HOMEDRIVEPATH"
+        local home ""
+        foreach src of local order {
+            if `"`home'"' != "" continue
+            if "`src'" == "HOMEDRIVEPATH" {
+                local drive : env HOMEDRIVE
+                local hpath : env HOMEPATH
+                if `"`drive'`hpath'"' != "" local home `"`drive'`hpath'"'
+            }
+            else local home : env `src'
+        }
+        if `"`home'"' != "" {
+            local rest = substr(`"`p'"', 2, .)
+            if `"`rest'"' != "" {
+                local cl = substr(`"`home'"', -1, 1)
+                if `"`cl'"' == "/" | `"`cl'"' == "\" {
+                    if length(`"`home'"') > 1 local home = substr(`"`home'"', 1, length(`"`home'"') - 1)
+                    else local rest = substr(`"`rest'"', 2, .)
+                }
+            }
+            local p `"`home'`rest'"'
+        }
+    }
+    c_local `local' `"`p'"'
 end

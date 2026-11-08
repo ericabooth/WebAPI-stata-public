@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.1.0  2026-07-04}{...}
+{* *! version 0.1.2  2026-11-08}{...}
 {viewerjumpto "Syntax" "webapi##syntax"}{...}
 {viewerjumpto "Description" "webapi##description"}{...}
 {viewerjumpto "Options" "webapi##options"}{...}
@@ -39,7 +39,7 @@
 {synopt :{cmd:every(}{it:#}{cmd:)}}poll every {it:#} seconds; snapshots stack into a panel{p_end}
 {synopt :{cmd:times(}{it:#}{cmd:)}}number of polls (default 12 when {cmd:every()} is set){p_end}
 {synopt :{cmd:timeout(}{it:#}{cmd:)}}seconds before giving up (default 30){p_end}
-{synopt :{cmd:tsv(}{it:path}{cmd:)}}keep the intermediate TSV at this path{p_end}
+{synopt :{cmd:tsv(}{it:path}{cmd:)}}keep the intermediate TSV at this path (give a full path){p_end}
 {synopt :{cmd:verbose}}echo the underlying python invocation{p_end}
 
 {syntab :Authentication}
