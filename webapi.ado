@@ -1,4 +1,9 @@
-*! webapi v0.1.3  2026-11-09
+*! webapi v0.1.4  2026-11-09
+*! v0.1.4: the request file is written from Mata, with backslash, line
+*!   break, carriage return and tab escaped: a body() (or header, parameter
+*!   or token) that spans several lines reaches the API whole -- only its
+*!   first line was sent before -- and no user string is macro-expanded or
+*!   re-parsed by Stata on the way.  Header comment lists every() / times().
 *! v0.1.3: reads the reply as UTF-8 (encoding("utf-8")), so accented text no
 *!   longer arrives garbled; every user string (URL, params, headers, tokens,
 *!   body, records, tsv path) is passed with macval(), so a "$" typed as \$
@@ -35,6 +40,8 @@
 *!   apikeyparam(k=v)   send an API key as a query parameter
 *!   body(text)         request body (POST); JSON content-type assumed
 *!   timeout(#)         seconds before giving up (default 30)
+*!   every(#)           poll: seconds between repeated requests
+*!   times(#)           poll: number of requests (default 12 with every())
 *!   tsv(path)          keep the intermediate TSV at this path
 *!   stringall          import every column as a string
 *!   clear              replace data in memory (like import delimited)
@@ -87,40 +94,16 @@ program define webapi, rclass
 
     * --- assemble the request as a tab-separated key/value file --------
     * A flat key<TAB>value file (rather than JSON built in Stata) means URLs,
-    * tokens, and parameter values need no escaping on the Stata side.
-    * macval() keeps a "$" or a backtick in a user string literal: without it
-    * Stata would expand "$limit" again here as a (usually empty) global.
-    * The writes sit in { } blocks on purpose: a one-line "if cond command"
-    * expands the command a second time, which would undo macval().
-    tempname h
-    quietly file open `h' using `"`argjson'"', write text replace
-    file write `h' "method"  _tab "`method'"    _n
-    file write `h' "url"     _tab `"`macval(url)'"'      _n
-    file write `h' "records" _tab `"`macval(records)'"'  _n
-    file write `h' "timeout" _tab "`timeout'"    _n
-    if `"`macval(headers)'"' != "" {
-        file write `h' "headers_raw" _tab `"`macval(headers)'"' _n
-    }
-    if `"`macval(params)'"' != "" {
-        file write `h' "params_raw" _tab `"`macval(params)'"' _n
-    }
-    if `"`macval(bearer)'"' != "" {
-        file write `h' "bearer" _tab `"`macval(bearer)'"' _n
-    }
-    if `"`macval(basicauth)'"' != "" {
-        file write `h' "basic" _tab `"`macval(basicauth)'"' _n
-    }
-    if `"`macval(apikeyheader)'"' != "" {
-        file write `h' "apikey_header" _tab `"`macval(apikeyheader)'"' _n
-    }
-    if `"`macval(apikeyparam)'"' != "" {
-        file write `h' "apikey_param" _tab `"`macval(apikeyparam)'"' _n
-    }
-    if `"`macval(body)'"' != "" {
-        file write `h' "body" _tab `"`macval(body)'"' _n
-    }
-    file write `h' "out_tsv" _tab `"`macval(outdata)'"'  _n
-    file close `h'
+    * tokens, and parameter values need no JSON escaping on the Stata side.
+    * The file is written by _wa_writeargs() in Mata, which reads each value
+    * straight from its local: no macro expansion, so a "$" or a backtick in
+    * a user string stays literal, and no Stata quoting, so an unbalanced
+    * compound quote in a value cannot break the line.  Backslash, line break, carriage
+    * return and tab are escaped (\\ \n \r \t), so a body() that spans
+    * several lines reaches the API whole; the helper decodes them.
+    local _wa_keys "method url records timeout headers_raw params_raw bearer basic apikey_header apikey_param body out_tsv"
+    local _wa_locs "method url records timeout headers params bearer basicauth apikeyheader apikeyparam body outdata"
+    mata: _wa_writeargs(st_local("argjson"), tokens(st_local("_wa_keys")), tokens(st_local("_wa_locs")))
 
     * --- python + polling settings -------------------------------------
     if lower("`c(os)'") == "windows" local PY "python"
@@ -261,8 +244,32 @@ program define _wa_expandtilde
 end
 
 
-* Escape SMCL braces so Mata's printf() shows text exactly as received.
 mata:
+// Write the request spec for webapi_helper.py: a first line "argsformat<TAB>2"
+// (values are escaped), then one key<TAB>value line per key.  Each value is
+// read from the caller's local named in locs[i], so it is never
+// macro-expanded or re-parsed by Stata.
+void _wa_writeargs(string scalar path, string rowvector keys, string rowvector locs)
+{
+    real scalar fh, i
+    string scalar v, bs
+
+    bs = char(92)
+    if (fileexists(path)) unlink(path)
+    fh = fopen(path, "w")
+    fput(fh, "argsformat" + char(9) + "2")
+    for (i = 1; i <= cols(keys); i++) {
+        v = st_local(locs[i])
+        v = subinstr(v, bs, bs + bs)
+        v = subinstr(v, char(10), bs + "n")
+        v = subinstr(v, char(13), bs + "r")
+        v = subinstr(v, char(9),  bs + "t")
+        fput(fh, keys[i] + char(9) + v)
+    }
+    fclose(fh)
+}
+
+// Escape SMCL braces so Mata's printf() shows text exactly as received.
 string scalar _wa_smclsafe(string scalar s)
 {
     s = subinstr(s, "{", char(1))

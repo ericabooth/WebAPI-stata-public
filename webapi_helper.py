@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """webapi_helper.py -- the network + JSON-to-table worker behind `webapi'.
 
+v0.1.4 (2026-11-09): the request file may start with "argsformat<TAB>2"; its
+values are then escaped (backslash, line break, carriage return and tab are
+written as two-character backslash codes) and are decoded here, so a body()
+that spans several lines is sent whole instead of only its first line.
+
 v0.1.3 (2026-11-09): a literal "a.b" key and a nested a{b} no longer
 collapse into one column (the later one is renamed with a _2 suffix and a
 warning is reported); a CRLF or lone CR inside a string value becomes a
@@ -112,10 +117,32 @@ def _column_names(paths):
     return names, renames
 
 
+_ESC = {"n": "\n", "r": "\r", "t": "\t", "\\": "\\"}
+
+
+def _unescape(v):
+    """Undo the escaping webapi.ado applies (argsformat 2): backslash-n,
+    backslash-r, backslash-t and a doubled backslash.  Any other backslash
+    pair is kept as it is."""
+    out, i = [], 0
+    while i < len(v):
+        c = v[i]
+        if c == "\\" and i + 1 < len(v):
+            nxt = v[i + 1]
+            out.append(_ESC.get(nxt, c + nxt))
+            i += 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 def _read_args(path):
     """Read the tab-separated key<TAB>value request spec written by webapi.ado.
     Using a flat key/value file (rather than JSON from the ado) means URLs,
-    tokens, and parameter values need no escaping on the Stata side."""
+    tokens, and parameter values need no JSON escaping on the Stata side.
+    With argsformat 2 (webapi 0.1.4 and later) each value is escaped so it
+    fits on one line; older files hold raw values."""
     args = {}
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -123,6 +150,8 @@ def _read_args(path):
             if "\t" in line:
                 k, v = line.split("\t", 1)
                 args[k] = v
+    if args.get("argsformat") == "2":
+        args = {k: _unescape(v) for k, v in args.items()}
     return args
 
 

@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.1.3  2026-11-09}{...}
+{* *! version 0.1.4  2026-11-09}{...}
 {viewerjumpto "Syntax" "webapi##syntax"}{...}
 {viewerjumpto "Description" "webapi##description"}{...}
 {viewerjumpto "Options" "webapi##options"}{...}
@@ -189,7 +189,9 @@ Nested arrays are kept as compact JSON text.{p_end}
 {pstd}
 {bf:Text.}  The reply is read as UTF-8, so accented and other non-ASCII text
 arrives intact.  A line break inside a value (LF, CRLF or CR) stays inside
-the value as a single line break ({cmd:char(10)}).{p_end}
+the value as a single line break ({cmd:char(10)}).  In the other direction,
+a {cmd:body()}, header, parameter or token may contain line breaks and tabs;
+they are sent as typed.{p_end}
 
 {pstd}
 {bf:Privacy.}  Do not place secrets in URL query strings if a header will do,

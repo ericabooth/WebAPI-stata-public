@@ -73,7 +73,7 @@ webapi get using "https://api.example.org/v1/status", ///
 - **The dollar sign.** Some APIs (Socrata's `$limit`, `$select`, `$where`) use parameters beginning with `$`, which Stata reads as a global macro. Type it as `\$`, for example `params("\$limit=5")`; `webapi` then sends the `$` unchanged. The same works in the URL, `headers()`, `body()` and the auth options. Do not use `` `=char(36)' ``: Stata expands the `$limit` it produces as a global before `webapi` runs, and the parameter name is lost.
 - **Numbers sent as strings.** By default each column gets the type `import delimited` picks, so a column of numeric-looking strings (Socrata sends every number as a string) arrives as numbers. Codes with leading zeros (ZIP, FIPS, `"001"`) lose the zeros; add `stringall` to keep every column exactly as sent.
 - **Column names.** Nested fields flatten to dotted names (`geo.lat` becomes `geolat`, with the full name in the variable label). If a record has both a literal `"a.b"` key and a nested `a{b}`, the second becomes `a.b_2` and `webapi` prints a note.
-- **Text.** The reply is read as UTF-8, so non-ASCII text arrives intact, and a line break inside a value (LF, CRLF or CR) stays in the value as one line break.
+- **Text.** The reply is read as UTF-8, so non-ASCII text arrives intact, and a line break inside a value (LF, CRLF or CR) stays in the value as one line break. In the other direction, a `body()`, header, parameter or token may contain line breaks and tabs; they are sent as typed (before v0.1.4 only the first line of a multi-line `body()` was sent).
 - **Secrets.** Store tokens in a global set in `profile.do`; never commit a token to a public repo, and prefer headers over query strings for keys.
 
 ## Relationship to other tools
