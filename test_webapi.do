@@ -1,4 +1,4 @@
-*! test_webapi.do  v0.1.0
+*! test_webapi.do  v0.1.3  (adds the \$limit case)
 *! Smoke test for webapi against two public JSON APIs (no credentials needed).
 version 16.0
 clear all
@@ -25,8 +25,8 @@ list id name addresscity in 1/3, noobs
 *     query parameters; a request header is attached.  records("") means the
 *     reply is itself the array of records.
 *     NOTE: Socrata's $limit / $select parameters begin with "$", which Stata
-*     would read as a global macro.  Use plain field filters as here, or write
-*     the "$" as char(36) if you need SoQL clauses.
+*     would read as a global macro.  Type the "$" as \$ (see case 2b);
+*     `=char(36)' does not work, because Stata expands the result again.
 *-----------------------------------------------------------------------------
 webapi get using "https://data.cdc.gov/resource/bi63-dtpu.json",            ///
     params("year=2017|cause_name=All causes")                              ///
@@ -38,6 +38,16 @@ keep state deaths aadr
 gsort -deaths
 list in 1/6, noobs
 display as result "webapi returned `got' rows over HTTP `code'"
+
+*-----------------------------------------------------------------------------
+* (2b) A SoQL clause that begins with "$", typed as \$.  A global named
+*      $limit must not leak into the request (webapi v0.1.3 and later).
+*-----------------------------------------------------------------------------
+global limit "NOT_SENT"
+webapi get using "https://data.cdc.gov/resource/bi63-dtpu.json",            ///
+    params("\$limit=3|year=2017") clear
+assert _N == 3
+macro drop limit
 
 *-----------------------------------------------------------------------------
 * (3) POST -- create a resource; the reply is the single created object.

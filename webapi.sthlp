@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.1.2  2026-11-08}{...}
+{* *! version 0.1.3  2026-11-09}{...}
 {viewerjumpto "Syntax" "webapi##syntax"}{...}
 {viewerjumpto "Description" "webapi##description"}{...}
 {viewerjumpto "Options" "webapi##options"}{...}
@@ -29,7 +29,7 @@
 {synoptline}
 {syntab :Shape the reply}
 {synopt :{cmd:records(}{it:path}{cmd:)}}dot-path to the JSON array of records; default is the whole reply{p_end}
-{synopt :{cmd:stringall}}import every column as a string (skip type detection){p_end}
+{synopt :{cmd:stringall}}import every column as a string (skip type detection; keeps codes such as {cmd:"001"}){p_end}
 {synopt :{cmd:clear}}replace the data in memory (as {help import delimited}){p_end}
 
 {syntab :Request}
@@ -63,7 +63,9 @@ authentication step, and a JSON reply that must be parsed into memory.
 {pstd}
 The network and JSON work is done by a companion Python helper that uses only
 the Python {bf:standard library} (no pip packages, no virtualenv), so the only
-requirement is a working {cmd:python3} on the system PATH.  The helper selects the array of records named by {cmd:records()},
+requirement is a working {cmd:python3} on the system PATH ({cmd:python} on
+Windows).  Stata does not ship this interpreter; install Python 3 from
+python.org or your system's package manager.  The helper selects the array of records named by {cmd:records()},
 flattens each record's nested scalar fields into dotted column names, and
 writes a tab-separated table that {cmd:webapi} imports with
 {help import delimited}.
@@ -83,6 +85,16 @@ than on JSON parsing as such.
 Use a dot path when the array is nested, for example {cmd:records("data")} or
 {cmd:records("results.items")}.  Omit it (or pass {cmd:records("")}) when the
 reply is itself the array of records.{p_end}
+
+{phang}{cmd:stringall} imports every column as a string.  Without it,
+{cmd:webapi} lets {help import delimited} choose each column's type, so a
+column whose values all look like numbers becomes numeric {it:even when the
+JSON sends them as strings}.  This is deliberate: many APIs (Socrata, for
+one) send every number as a string, and those columns arrive ready for
+analysis.  The cost is that codes with leading zeros, such as ZIP codes, FIPS
+codes or IDs like {cmd:"001"}, lose the zeros.  Specify {cmd:stringall} to
+keep such columns exactly as sent, then {help destring} the ones you want as
+numbers.{p_end}
 
 {phang}{cmd:params()} and {cmd:headers()} are pipe-delimited so that values may
 contain spaces: {cmd:params("q=heart disease|limit=50")},
@@ -157,8 +169,27 @@ keyed by {cmd:_poll} and {cmd:_polltime}:{p_end}
 {pstd}
 {bf:A note on the dollar sign.}  Some APIs (Socrata's {cmd:$limit},
 {cmd:$select}, {cmd:$where}) use parameters that begin with {cmd:$}, which
-Stata reads as a global-macro reference.  Use plain field filters where you
-can, or write the dollar sign as {cmd:`=char(36)'} inside {cmd:params()}.{p_end}
+Stata reads as a global-macro reference.  Type the dollar sign as {cmd:\$},
+for example {cmd:params("\$limit=5|\$select=state,deaths")}.  Stata then
+passes a literal {cmd:$} to {cmd:webapi}, which sends it unchanged (as
+{cmd:%24}, its URL-encoded form, in a parameter).  The same works in
+{cmd:using}, {cmd:headers()}, {cmd:body()} and the authentication options.
+Do not use {cmd:`=char(36)'}: Stata expands the {cmd:$limit} that it
+produces as a global before {cmd:webapi} runs, so the parameter name is lost.
+A literal backtick is typed as {cmd:\`} in the same way.{p_end}
+
+{pstd}
+{bf:Column names.}  Nested fields flatten to dotted names ({cmd:geo.lat}),
+which {help import delimited} turns into variable names ({cmd:geolat}) and
+keeps in full as the variable label.  If a record holds both a literal key
+{cmd:"a.b"} and a nested {cmd:a}{c -(}{cmd:b}{c )-}, the second becomes
+{cmd:a.b_2} and {cmd:webapi} prints a note, so neither value is dropped.
+Nested arrays are kept as compact JSON text.{p_end}
+
+{pstd}
+{bf:Text.}  The reply is read as UTF-8, so accented and other non-ASCII text
+arrives intact.  A line break inside a value (LF, CRLF or CR) stays inside
+the value as a single line break ({cmd:char(10)}).{p_end}
 
 {pstd}
 {bf:Privacy.}  Do not place secrets in URL query strings if a header will do,

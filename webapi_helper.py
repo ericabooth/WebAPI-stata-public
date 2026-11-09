@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """webapi_helper.py -- the network + JSON-to-table worker behind `webapi'.
 
+v0.1.3 (2026-11-09): a literal "a.b" key and a nested a{b} no longer
+collapse into one column (the later one is renamed with a _2 suffix and a
+warning is reported); a CRLF or lone CR inside a string value becomes a
+single LF, so the line break survives the import into Stata; nested arrays
+kept as JSON text now keep non-ASCII characters as UTF-8 rather than as escape codes.
+
 Portability (2026-08-16): explicit encoding="utf-8" on the TSV and status
 files so non-ASCII values round-trip on Windows (cp1252 default) as on POSIX.
 
@@ -15,7 +21,8 @@ the result as a TSV that Stata materialises with `import delimited'.  A tiny
 key=value status file is written to <out.json> for the ado to read.
 
 Standard library only, so the package has no external dependencies: a working
-python3 on PATH (which Stata 16+ ships or can point at) is all it needs.
+python3 on the PATH is all it needs.  Stata does not ship one; install Python 3
+separately (python.org, Homebrew, or a system package).
 """
 import sys, json, csv, ssl, base64
 import urllib.request, urllib.parse, urllib.error
@@ -54,24 +61,55 @@ def _get_path(obj, path):
     return cur
 
 
-def _flatten(d, prefix=""):
-    """Flatten a record's nested scalar fields into dotted column names.
+def _scalar(v):
+    """Prepare one scalar for the TSV.  A CRLF or a lone CR inside a string
+    becomes LF: Stata's import keeps an LF inside a quoted field as a line
+    break but drops a CR, which would join the two lines."""
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, str) and "\r" in v:
+        return v.replace("\r\n", "\n").replace("\r", "\n")
+    return v
+
+
+def _flatten(d, path=()):
+    """Flatten a record's nested scalar fields into a dict keyed by the tuple
+    of keys that leads to each value.  Keeping the path as a tuple (rather than
+    a joined "a.b" string) keeps a literal key "a.b" apart from a nested a{b};
+    _column_names() then gives each path a unique column name.
     Nested arrays are kept as compact JSON strings so no data is silently lost."""
     out = {}
     if isinstance(d, dict):
         for k, v in d.items():
-            key = prefix + str(k)
+            key = path + (str(k),)
             if isinstance(v, dict):
-                out.update(_flatten(v, key + "."))
+                out.update(_flatten(v, key))
             elif isinstance(v, list):
-                out[key] = json.dumps(v, separators=(",", ":"))
-            elif isinstance(v, bool):
-                out[key] = int(v)
+                out[key] = json.dumps(v, separators=(",", ":"), ensure_ascii=False)
             else:
-                out[key] = v
+                out[key] = _scalar(v)
     else:
-        out[prefix.rstrip(".") or "value"] = d
+        out[path or ("value",)] = _scalar(d)
     return out
+
+
+def _column_names(paths):
+    """Map each key path to a dotted column name, unique across all records.
+    When two different paths join to the same name (a literal "a.b" key and a
+    nested a{b}), the later one gets a _2, _3, ... suffix.  Returns the mapping
+    and a list of the renames for the warning line."""
+    names, used, renames = {}, set(), []
+    for p in paths:
+        base = ".".join(p)
+        name, i = base, 1
+        while name in used:
+            i += 1
+            name = f"{base}_{i}"
+        if name != base:
+            renames.append(f"{base} -> {name}")
+        used.add(name)
+        names[p] = name
+    return names, renames
 
 
 def _read_args(path):
@@ -132,21 +170,29 @@ def run(args):
             f"(got {got}); check the path against the API's reply"
         )
 
-    rows = [_flatten(r) if isinstance(r, dict) else {"value": r} for r in recs]
-    cols = []
+    rows = [_flatten(r) if isinstance(r, dict) else {("value",): _scalar(r)}
+            for r in recs]
+    paths = []
+    seen = set()
     for r in rows:
         for k in r.keys():
-            if k not in cols:
-                cols.append(k)
+            if k not in seen:
+                seen.add(k)
+                paths.append(k)
+    names, renames = _column_names(paths)
 
     with open(args["out_tsv"], "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, delimiter="\t", lineterminator="\n")
-        w.writerow(cols)
+        w.writerow([names[p] for p in paths])
         for r in rows:
-            w.writerow(["" if r.get(c) is None else r.get(c) for c in cols])
+            w.writerow(["" if r.get(p) is None else r.get(p) for p in paths])
 
-    return {"status": "ok", "nrows": len(rows), "ncols": len(cols),
-            "http_status": http_status}
+    result = {"status": "ok", "nrows": len(rows), "ncols": len(paths),
+              "http_status": http_status}
+    if renames:
+        result["warning"] = ("two JSON fields flatten to the same column name; "
+                             "renamed " + "; ".join(renames))
+    return result
 
 
 def main():

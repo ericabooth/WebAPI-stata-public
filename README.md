@@ -9,7 +9,7 @@ webapi get using "https://data.cdc.gov/resource/bi63-dtpu.json", ///
 
 `webapi` performs one HTTP request, authenticates it, and reads the JSON reply back into Stata as variables and observations. It is a small, dependency-free generalisation of the pattern behind [`googlesheets`](https://github.com/ericabooth/googlesheets-stata-public) and [`googlechart`](https://github.com/ericabooth/googlechart-stata-public): a request to a URL, an authentication step, and a JSON reply parsed into memory.
 
-The network and JSON work is done by a companion Python helper that uses only the Python **standard library** — no `pip` packages, no virtualenv. The only requirement is a working `python3` on the PATH, which Stata 16 and later ships.
+The network and JSON work is done by a companion Python helper that uses only the Python **standard library** — no `pip` packages, no virtualenv. The only requirement is Stata 16 or later and a working `python3` on the PATH (`python` on Windows). Stata does not ship this interpreter; install Python 3 from python.org or your system's package manager.
 
 ## Install
 
@@ -24,9 +24,10 @@ help webapi
 |---|---|
 | **Request** | `get` or `post`, with query `params()`, request `headers()`, and a `body()` for POST |
 | **Auth** | `bearer()`, `apikeyheader()`, `apikeyparam()`, or `basicauth()` — pick what the API wants |
-| **Shape** | `records()` names the JSON array to turn into rows; nested object fields flatten automatically to columns |
-| **Poll** | `every(seconds)` `times(n)` re-fetches a live endpoint on an interval and stacks the snapshots into a panel |
-| **Return** | the table in memory, plus `r(nrows)`, `r(ncols)`, `r(http)` |
+| **Shape** | `records()` names the JSON array to turn into rows; nested object fields flatten automatically to columns; `stringall` imports every column as a string |
+| **Poll** | `every(seconds)` `times(n)` re-fetches a live endpoint on an interval and stacks the snapshots into a panel; `times()` defaults to 12 when `every()` is set |
+| **Control** | `timeout(seconds)` (default 30), `tsv(path)` keeps the intermediate TSV, `verbose` echoes the Python call |
+| **Return** | the table in memory, plus `r(nrows)`, `r(http)` and `r(url)`; `r(ncols)` on a single request, `r(polls)` on a polling call |
 
 ## Examples
 
@@ -69,7 +70,10 @@ webapi get using "https://api.example.org/v1/status", ///
 
 - **`records()`** is a dot path to the array of records. Omit it (or use `records("")`) when the reply is itself the array; use `records("data")` or `records("results.items")` when it is nested.
 - **`params()` and `headers()`** are pipe-delimited so values may contain spaces: `params("q=heart disease|limit=50")`.
-- **The dollar sign.** Some APIs (Socrata's `$limit`, `$select`, `$where`) use parameters beginning with `$`, which Stata reads as a global macro. Use plain field filters where you can, or write the `$` as `` `=char(36)' `` inside `params()`.
+- **The dollar sign.** Some APIs (Socrata's `$limit`, `$select`, `$where`) use parameters beginning with `$`, which Stata reads as a global macro. Type it as `\$`, for example `params("\$limit=5")`; `webapi` then sends the `$` unchanged. The same works in the URL, `headers()`, `body()` and the auth options. Do not use `` `=char(36)' ``: Stata expands the `$limit` it produces as a global before `webapi` runs, and the parameter name is lost.
+- **Numbers sent as strings.** By default each column gets the type `import delimited` picks, so a column of numeric-looking strings (Socrata sends every number as a string) arrives as numbers. Codes with leading zeros (ZIP, FIPS, `"001"`) lose the zeros; add `stringall` to keep every column exactly as sent.
+- **Column names.** Nested fields flatten to dotted names (`geo.lat` becomes `geolat`, with the full name in the variable label). If a record has both a literal `"a.b"` key and a nested `a{b}`, the second becomes `a.b_2` and `webapi` prints a note.
+- **Text.** The reply is read as UTF-8, so non-ASCII text arrives intact, and a line break inside a value (LF, CRLF or CR) stays in the value as one line break.
 - **Secrets.** Store tokens in a global set in `profile.do`; never commit a token to a public repo, and prefer headers over query strings for keys.
 
 ## Relationship to other tools

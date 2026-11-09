@@ -1,4 +1,13 @@
-*! webapi v0.1.2  2026-11-08
+*! webapi v0.1.3  2026-11-09
+*! v0.1.3: reads the reply as UTF-8 (encoding("utf-8")), so accented text no
+*!   longer arrives garbled; every user string (URL, params, headers, tokens,
+*!   body, records, tsv path) is passed with macval(), so a "$" typed as \$
+*!   (Socrata's \$limit) reaches the API unchanged instead of being expanded
+*!   as a global inside webapi (the help now documents \$, because Stata
+*!   expands `=char(36)' in the caller); HTTP error text with quotes, braces,
+*!   backticks or "$" prints intact; the helper keeps a literal
+*!   "a.b" key and a nested a{b} as two columns (with a warning) and turns a
+*!   CRLF inside a value into a single line break.
 *! v0.1.2: bindquote(strict), so a value that contains line breaks stays one
 *!   row (it used to split into extra rows); a "~" in tsv() is expanded here,
 *!   because the Python helper does not expand it.
@@ -53,7 +62,7 @@ program define webapi, rclass
         EVERY(real 0) TIMES(integer 0)                                     ///
         TSV(string) STRINGall CLEAR Verbose ]
 
-    local url `"`using'"'
+    local url `"`macval(using)'"'
     local method = upper("`sub'")
 
     * --- discover the helper -------------------------------------------
@@ -72,27 +81,45 @@ program define webapi, rclass
     else {
         * Expand a leading "~" here: Stata and the Python helper must use the
         * same full path, and Python does not expand "~".
-        _wa_expandtilde, local(outdata) path(`"`tsv'"')
+        _wa_expandtilde, local(outdata) path(`"`macval(tsv)'"')
     }
     tempfile status argjson
 
     * --- assemble the request as a tab-separated key/value file --------
     * A flat key<TAB>value file (rather than JSON built in Stata) means URLs,
     * tokens, and parameter values need no escaping on the Stata side.
+    * macval() keeps a "$" or a backtick in a user string literal: without it
+    * Stata would expand "$limit" again here as a (usually empty) global.
+    * The writes sit in { } blocks on purpose: a one-line "if cond command"
+    * expands the command a second time, which would undo macval().
     tempname h
     quietly file open `h' using `"`argjson'"', write text replace
     file write `h' "method"  _tab "`method'"    _n
-    file write `h' "url"     _tab `"`url'"'      _n
-    file write `h' "records" _tab `"`records'"'  _n
+    file write `h' "url"     _tab `"`macval(url)'"'      _n
+    file write `h' "records" _tab `"`macval(records)'"'  _n
     file write `h' "timeout" _tab "`timeout'"    _n
-    if `"`headers'"'      != "" file write `h' "headers_raw"   _tab `"`headers'"'      _n
-    if `"`params'"'       != "" file write `h' "params_raw"    _tab `"`params'"'       _n
-    if `"`bearer'"'       != "" file write `h' "bearer"        _tab `"`bearer'"'       _n
-    if `"`basicauth'"'    != "" file write `h' "basic"         _tab `"`basicauth'"'    _n
-    if `"`apikeyheader'"' != "" file write `h' "apikey_header" _tab `"`apikeyheader'"' _n
-    if `"`apikeyparam'"'  != "" file write `h' "apikey_param"  _tab `"`apikeyparam'"'  _n
-    if `"`body'"'         != "" file write `h' "body"          _tab `"`body'"'         _n
-    file write `h' "out_tsv" _tab `"`outdata'"'  _n
+    if `"`macval(headers)'"' != "" {
+        file write `h' "headers_raw" _tab `"`macval(headers)'"' _n
+    }
+    if `"`macval(params)'"' != "" {
+        file write `h' "params_raw" _tab `"`macval(params)'"' _n
+    }
+    if `"`macval(bearer)'"' != "" {
+        file write `h' "bearer" _tab `"`macval(bearer)'"' _n
+    }
+    if `"`macval(basicauth)'"' != "" {
+        file write `h' "basic" _tab `"`macval(basicauth)'"' _n
+    }
+    if `"`macval(apikeyheader)'"' != "" {
+        file write `h' "apikey_header" _tab `"`macval(apikeyheader)'"' _n
+    }
+    if `"`macval(apikeyparam)'"' != "" {
+        file write `h' "apikey_param" _tab `"`macval(apikeyparam)'"' _n
+    }
+    if `"`macval(body)'"' != "" {
+        file write `h' "body" _tab `"`macval(body)'"' _n
+    }
+    file write `h' "out_tsv" _tab `"`macval(outdata)'"'  _n
     file close `h'
 
     * --- python + polling settings -------------------------------------
@@ -127,34 +154,48 @@ program define webapi, rclass
         local nrows 0
         local ncols 0
         local http ""
+        local warn ""
         tempname sh
         file open `sh' using `"`status'"', read text
         file read `sh' line
         while r(eof) == 0 {
-            local eq = strpos(`"`line'"', "=")
+            * Split key=value in Mata: a message (an API's error body) can hold
+            * quotes, backticks or "$", which Stata expressions would mangle.
+            mata: st_local("eq", strofreal(strpos(st_local("line"), "=")))
             if `eq' > 0 {
-                local k = substr(`"`line'"', 1, `eq'-1)
-                local v = substr(`"`line'"', `eq'+1, .)
-                if "`k'" == "status"       local st    `"`v'"'
-                else if "`k'" == "error"   local err   `"`v'"'
-                else if "`k'" == "message" local msg   `"`v'"'
-                else if "`k'" == "nrows"   local nrows `"`v'"'
-                else if "`k'" == "ncols"   local ncols `"`v'"'
-                else if "`k'" == "http_status" local http `"`v'"'
+                mata: st_local("k", substr(st_local("line"), 1, `eq' - 1))
+                mata: st_local("v", substr(st_local("line"), `eq' + 1, .))
+                local tgt ""
+                if "`k'" == "status"           local tgt st
+                else if "`k'" == "error"       local tgt err
+                else if "`k'" == "message"     local tgt msg
+                else if "`k'" == "warning"     local tgt warn
+                else if "`k'" == "nrows"       local tgt nrows
+                else if "`k'" == "ncols"       local tgt ncols
+                else if "`k'" == "http_status" local tgt http
+                if "`tgt'" != "" mata: st_local("`tgt'", st_local("v"))
             }
             file read `sh' line
         }
         file close `sh'
 
-        if "`st'" != "ok" {
-            display as error "webapi `sub': `err' -- `msg'"
+        if `"`macval(st)'"' != "ok" {
+            * Print the message from Mata with SMCL braces escaped, so quotes,
+            * braces, backticks and "$" in an error body show as sent.
+            mata: st_local("msg", _wa_smclsafe(st_local("msg")))
+            mata: st_local("err", _wa_smclsafe(st_local("err")))
+            mata: printf("{err}webapi %s: %s -- %s\n", st_local("sub"), st_local("err"), st_local("msg"))
             exit 198
+        }
+        mata: st_local("haswarn", strofreal(st_local("warn") != ""))
+        if `haswarn' & `_p' == 1 {
+            mata: printf("{txt}webapi note: %s\n", _wa_smclsafe(st_local("warn")))
         }
 
         if `polling' {
             * accumulate one snapshot per poll, stamped with the poll index
             * and the wall-clock time, so a stream of pulls stacks into a panel.
-            import delimited using `"`outdata'"', delimiters(tab) bindquote(strict) varnames(1) clear `scols'
+            import delimited using `"`macval(outdata)'"', delimiters(tab) bindquote(strict) varnames(1) encoding("utf-8") clear `scols'
             quietly gen long _poll = `_p'
             quietly gen str12 _polltime = "`c(current_time)'"
             if `_p' > 1 quietly append using `"`master'"'
@@ -163,7 +204,7 @@ program define webapi, rclass
             if `_p' < `times' & `every' > 0 sleep `=int(`every'*1000)'
         }
         else {
-            import delimited using `"`outdata'"', delimiters(tab) bindquote(strict) varnames(1) `clear' `scols'
+            import delimited using `"`macval(outdata)'"', delimiters(tab) bindquote(strict) varnames(1) encoding("utf-8") `clear' `scols'
         }
     }
 
@@ -180,7 +221,7 @@ program define webapi, rclass
         return scalar ncols = `ncols'
     }
     return local http `"`http'"'
-    return local url  `"`url'"'
+    return local url  `"`macval(url)'"'
 end
 
 
@@ -190,8 +231,8 @@ end
 program define _wa_expandtilde
     version 16.0
     syntax , LOCAL(name) [ PATH(string) ]
-    local p `"`path'"'
-    if `"`p'"' == "~" | strpos(`"`p'"', "~/") == 1 | strpos(`"`p'"', "~\") == 1 {
+    local p `"`macval(path)'"'
+    if `"`macval(p)'"' == "~" | strpos(`"`macval(p)'"', "~/") == 1 | strpos(`"`macval(p)'"', "~\") == 1 {
         if lower("`c(os)'") == "windows" local order "USERPROFILE HOMEDRIVEPATH HOME"
         else                              local order "HOME USERPROFILE HOMEDRIVEPATH"
         local home ""
@@ -205,7 +246,7 @@ program define _wa_expandtilde
             else local home : env `src'
         }
         if `"`home'"' != "" {
-            local rest = substr(`"`p'"', 2, .)
+            mata: st_local("rest", substr(st_local("p"), 2, .))
             if `"`rest'"' != "" {
                 local cl = substr(`"`home'"', -1, 1)
                 if `"`cl'"' == "/" | `"`cl'"' == "\" {
@@ -213,8 +254,19 @@ program define _wa_expandtilde
                     else local rest = substr(`"`rest'"', 2, .)
                 }
             }
-            local p `"`home'`rest'"'
+            local p `"`home'`macval(rest)'"'
         }
     }
-    c_local `local' `"`p'"'
+    c_local `local' `"`macval(p)'"'
+end
+
+
+* Escape SMCL braces so Mata's printf() shows text exactly as received.
+mata:
+string scalar _wa_smclsafe(string scalar s)
+{
+    s = subinstr(s, "{", char(1))
+    s = subinstr(s, "}", "{c )-}")
+    return(subinstr(s, char(1), "{c -(}"))
+}
 end
