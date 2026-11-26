@@ -14,6 +14,12 @@ The network and JSON work is done by a companion Python helper that uses only th
 ## Install
 
 ```stata
+ssc install webapi
+```
+
+To install the development version from this repository instead:
+
+```stata
 net install webapi, from("https://raw.githubusercontent.com/ericabooth/webapi-stata-public/main/") replace force
 help webapi
 ```
